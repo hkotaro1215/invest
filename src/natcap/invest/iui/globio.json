@@ -4,7 +4,7 @@
   "targetScript": "natcap.invest.globio.globio",
   "modelName": "globio",
   "localDocURI": "../documentation/globio.html",
-  "height": 750,
+  "height": 800,
   "width": 900,
   "elements": [
     {
@@ -167,7 +167,7 @@
           "args_id": "yieldgap_threshold",
           "type": "text",
           "label": "Yieldgap Threshold",
-          "defaultValue": "0.456804906897",
+          "defaultValue": "0.46",
           "required": true,
           "validText": "^[0-9]+\\.?[0-9]*$",
           "disabledBy": "predefined_globio"
@@ -182,6 +182,43 @@
           "validText": "^[0-9]+\\.?[0-9]*$",
           "disabledBy": "predefined_globio"
         }
+      ]
+    },
+    {
+      "id": "aoi_summary",
+      "args_id": "aoi_summary",
+      "label": "Summarize MSA by AOI",
+      "type": "container",
+      "defaultValue": false,
+      "collapsible": true,
+      "elements": [
+        {
+          "id": "aoi_uri",
+          "args_id": "aoi_uri",
+          "type": "file",
+          "label": "AOI (Vector)",
+          "defaultValue": "../globio/input/sub_aoi.shp",
+          "required": true,
+          "validateAs": {
+            "type": "OGR",
+            "layers": [
+              {
+                "name": {
+                  "inheritFrom": "file"
+                },
+                "type": "polygons"
+              }
+            ]
+          },
+          "helpText": "This is a set of polygons that can be used to aggregate MSA by a given field"
+        },
+        {
+          "id": "aoi_summary_key",
+          "args_id": "aoi_summary_key",
+          "type": "text",
+          "label": "Unique feature key in AOI",
+          "required": true
+        },
       ]
     },
     {
