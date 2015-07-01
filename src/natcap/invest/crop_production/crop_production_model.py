@@ -14,7 +14,7 @@ import crop_production_io as io
 from raster import Raster
 from vector import Vector
 
-LOGGER = logging.getLogger('invest_natcap.crop_production.model')
+LOGGER = logging.getLogger('invest.natcap.crop_production.model')
 logging.basicConfig(format='%(asctime)s %(name)-15s %(levelname)-8s \
     %(message)s', level=logging.DEBUG, datefmt='%m/%d/%Y %H:%M:%S ')
 

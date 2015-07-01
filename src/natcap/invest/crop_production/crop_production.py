@@ -9,7 +9,7 @@ import pprint as pp
 import crop_production_io as io
 import crop_production_model as model
 
-LOGGER = logging.getLogger('invest_natcap.crop_production.crop_production')
+LOGGER = logging.getLogger('invest.natcap.crop_production.crop_production')
 logging.basicConfig(format='%(asctime)s %(name)-15s %(levelname)-8s \
     %(message)s', level=logging.DEBUG, datefmt='%m/%d/%Y %H:%M:%S ')
 

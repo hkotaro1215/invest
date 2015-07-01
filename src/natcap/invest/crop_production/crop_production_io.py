@@ -12,7 +12,7 @@ import collections
 import pygeoprocessing.geoprocessing as pygeo
 from raster import Raster
 
-LOGGER = logging.getLogger('invest_natcap.crop_production.io')
+LOGGER = logging.getLogger('invest.natcap.crop_production.io')
 logging.basicConfig(format='%(asctime)s %(name)-15s %(levelname)-8s \
     %(message)s', level=logging.DEBUG, datefmt='%m/%d/%Y %H:%M:%S ')
 
