@@ -4,20 +4,24 @@ Raster Class
 
 import os
 import shutil
-import functools
 import logging
 
-import gdal
-import ogr
-import osr
+try:
+    import gdal
+    import ogr
+    import osr
+except:
+    from osgeo import gdal
+    from osgeo import ogr
+    from osgeo import osr
+
 import numpy as np
-# from affine import Affine
 from shapely.geometry import Polygon
 import shapely
 import pygeoprocessing as pygeo
 
-from affine import Affine
 from vector import Vector
+from affine import Affine
 
 LOGGER = logging.getLogger('Raster Class')
 logging.basicConfig(format='%(asctime)s %(name)-15s %(levelname)-8s \
@@ -32,7 +36,7 @@ class Raster(object):
         self.dataset = None
 
     @classmethod
-    def from_array(self, array, affine, proj, datatype, nodata_val, driver='GTiff'):
+    def from_array(self, array, affine, proj, datatype, nodata_val, driver='GTiff', filepath=None):
         if len(array.shape) is 2:
             num_bands = 1
         elif len(array.shape) is 3:
@@ -40,7 +44,10 @@ class Raster(object):
         else:
             raise ValueError
 
-        dataset_uri = pygeo.geoprocessing.temporary_filename()
+        if filepath:
+            dataset_uri = filepath
+        else:
+            dataset_uri = pygeo.geoprocessing.temporary_filename()
         rows = array.shape[0]
         cols = array.shape[1]
 
@@ -65,7 +72,8 @@ class Raster(object):
         dataset = None
         driver = None
 
-        return Raster(dataset_uri, driver=driver)
+        if not filepath:
+            return Raster(dataset_uri, driver=driver)
 
     @classmethod
     def from_file(self, uri, driver='GTiff'):
@@ -317,16 +325,19 @@ class Raster(object):
                 return mini
             return self.local_op(raster, min_closure)
 
-    def __getitem__(self):
-        pass  # return numpy slice?  Raster object with sliced numpy array?
+    def __getitem__(self, key):
+        arr = self.get_band(1)
+        return arr[key]
 
-    def __setitem__(self):
-        pass  # set numpy values to raster
+    def __setitem__(self, key, item):
+        arr = self.get_band(1)
+        arr[key] = item
+        self.set_band(1, arr)
 
-    def __getslice__(self):
+    def getslice(self, a, b, c):
         pass
 
-    def __setslice__(self):
+    def setslice(self, a, b, c):
         pass
 
     def __iter__(self):
@@ -587,8 +598,18 @@ class Raster(object):
         a = self.get_affine()
         return abs((a.a * a.e))
 
-    def set_band(self, masked_array):
-        raise NotImplementedError
+    def set_band(self, band_num, masked_array):
+        affine = self.get_affine()
+        proj = self.get_projection()
+        datatype = self.get_datatype(band_num)
+        nodata_val = masked_array.fill_value
+        if np.issubdtype(nodata_val, int):
+            nodata_val = nodata_val.astype(int)
+        else:
+            nodata_val = nodata_val.astype(float)
+        uri = self.uri
+        Raster.from_array(
+            masked_array, affine, proj, datatype, nodata_val, filepath=uri)
 
     def set_bands(self, array):
         raise NotImplementedError
@@ -783,21 +804,24 @@ class Raster(object):
         pixel_size = self.get_affine().a
 
         try:
-            pygeo.geoprocessing.vectorize_datasets(
-                [self.uri],
-                lambda x: x,
+            # pygeo.geoprocessing.vectorize_datasets(
+            #     [self.uri],
+            #     lambda x: x,
+            #     dataset_out_uri,
+            #     datatype,
+            #     nodata,
+            #     pixel_size,
+            #     'intersection',
+            #     aoi_uri=aoi_uri,
+            #     assert_datasets_projected=False,  # ?
+            #     process_pool=None,
+            #     vectorize_op=False,
+            #     rasterize_layer_options=['ALL_TOUCHED=TRUE'])
+            pygeo.geoprocessing.clip_dataset_uri(
+                self.uri,
+                aoi_uri,
                 dataset_out_uri,
-                datatype,
-                nodata,
-                pixel_size,
-                'intersection',
-                aoi_uri=aoi_uri,
-                assert_datasets_projected=False,  # ?
-                process_pool=None,
-                vectorize_op=False,
-                rasterize_layer_options=['ALL_TOUCHED=TRUE'])
-            # pygeo.geoprocessing.clip_dataset_uri(
-            #     self.uri, aoi_uri, dataset_out_uri, assert_projections=False)
+                assert_projections=False)
             return Raster.from_tempfile(dataset_out_uri)
         except:
             os.remove(dataset_out_uri)
@@ -852,21 +876,21 @@ class Raster(object):
 
         return Raster.from_tempfile(dataset_out_uri)
 
-    def reproject_georef_point(self, x, y, dst_proj):
-        reproj = functools.partial(
-            pyproj.transform,
-            pyproj.Proj(init="epsg:%i" % self.get_projection()),
-            pyproj.Proj(init="epsg:%i" % dst_proj))
+    # def reproject_georef_point(self, x, y, dst_proj):
+    #     reproj = functools.partial(
+    #         pyproj.transform,
+    #         pyproj.Proj(init="epsg:%i" % self.get_projection()),
+    #         pyproj.Proj(init="epsg:%i" % dst_proj))
 
-        return reproj(x, y)
+    #     return reproj(x, y)
 
-    def reproject_shapely_object(self, shapely_object, dst_proj):
-        reproj = functools.partial(
-            pyproj.transform,
-            pyproj.Proj(init="epsg:%i" % self.get_projection()),
-            pyproj.Proj(init="epsg:%i" % dst_proj))
+    # def reproject_shapely_object(self, shapely_object, dst_proj):
+    #     reproj = functools.partial(
+    #         pyproj.transform,
+    #         pyproj.Proj(init="epsg:%i" % self.get_projection()),
+    #         pyproj.Proj(init="epsg:%i" % dst_proj))
 
-        return shapely.ops.transform(reproj, shapely_object)
+    #     return shapely.ops.transform(reproj, shapely_object)
 
     def resize_pixels(self, pixel_size, resample_method):
         bounding_box = self.get_bounding_box()
@@ -930,7 +954,9 @@ class Raster(object):
         raise NotImplementedError
 
     def to_vector(self):
-        raise NotImplementedError
+        aoi_shapely = self.get_aoi()
+        proj = self.get_projection()
+        return Vector.from_shapely(aoi_shapely, proj)
 
     def local_op(self, raster, pixel_op_closure, broadcast=False):
         bounding_box_mode = "dataset"
@@ -979,8 +1005,12 @@ class Raster(object):
     def _close_dataset(self):
         self.dataset = None
 
-
+'''
+RasterFactory Class
+'''
 import random
+
+import numpy as np
 
 class RasterFactory(object):
 
@@ -1039,3 +1069,4 @@ class RasterFactory(object):
         a[:] = row_vals
         a = a.T
         return self._create_raster(a)
+

@@ -5,12 +5,17 @@ Vector Class
 import os
 import shutil
 
-import gdal
-import ogr
-import osr
+try:
+    import gdal
+    import ogr
+    import osr
+except:
+    from osgeo import gdal
+    from osgeo import ogr
+    from osgeo import osr
+
 from shapely.geometry import *
 import shapely.wkt
-
 import pygeoprocessing as pygeo
 
 
@@ -144,6 +149,10 @@ class Vector(object):
 
         return shapely_object
 
+    def get_geometry_centroid(self):
+        centroid = self.get_geometry().centroid
+        return centroid
+
     def get_geometries(self, layer):
         raise NotImplementedError
 
@@ -158,6 +167,16 @@ class Vector(object):
 
     def get_projection(self):
         raise NotImplementedError
+        # self._open_datasource()
+        # layer = self.datasource.GetLayer()
+        # print layer.GetSpatialRef().GetAuthorityCode(0)
+        # wkt = layer.GetSpatialRef().ExportToWkt()
+        # layer = None
+        # self._close_datasource()
+        # return wkt
+        # RasterSRS = osr.SpatialReference()
+        # RasterSRS.ImportFromWkt(layer.GetSpatialRef().ExportToWkt())
+        # return int(RasterSRS.GetAttrValue("AUTHORITY", 1))
 
     def get_projection_wkt(self):
         self._open_datasource()
@@ -166,6 +185,9 @@ class Vector(object):
         layer = None
         self._close_datasource()
         return wkt
+        # RasterSRS = osr.SpatialReference()
+        # RasterSRS.ImportFromWkt(layer.GetSpatialRef().ExportToWkt())
+        # return int(RasterSRS.GetAttrValue("AUTHORITY", 1))
 
     def get_aoi(self):
         raise NotImplementedError

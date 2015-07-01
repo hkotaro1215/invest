@@ -14,7 +14,7 @@ import crop_production_io as io
 from raster import Raster
 from vector import Vector
 
-LOGGER = logging.getLogger('natcap.invest.crop_production.model')
+LOGGER = logging.getLogger('invest_natcap.crop_production.model')
 logging.basicConfig(format='%(asctime)s %(name)-15s %(levelname)-8s \
     %(message)s', level=logging.DEBUG, datefmt='%m/%d/%Y %H:%M:%S ')
 
@@ -60,8 +60,7 @@ def calc_observed_yield(vars_dict):
 
     lulc_raster = Raster.from_file(
         vars_dict['lulc_map_uri']).set_nodata(NODATA_INT)
-    aoi_vector = Vector.from_shapely(
-        lulc_raster.get_aoi(), lulc_raster.get_projection())
+    aoi_vector = lulc_raster.to_vector()
 
     # setup useful base rasters
     base_raster_float = lulc_raster.set_datatype_and_nodata(
@@ -71,6 +70,7 @@ def calc_observed_yield(vars_dict):
         returns_raster = base_raster_float.zeros()
 
     crops = vars_dict['crops_in_aoi_list']
+
     for crop in crops:
         LOGGER.info('Calculating observed yield for %s' % crop)
         # Wrangle Data...
@@ -187,7 +187,6 @@ def _get_observed_yield_from_dataset(vars_dict, crop, aoi_vector, base_raster_fl
             base_raster_float.get_projection(),
             'nearest',
             base_raster_float.get_affine().a)
-
         aligned_crop_raster = reproj_crop_raster.align_to(
             base_raster_float, 'nearest')
 
@@ -216,14 +215,14 @@ def _get_masked_lulc_raster(vars_dict, crop, lulc_raster):
     '''
     crop_lookup_dict = vars_dict['crop_lookup_dict']
     inv_crop_lookup_dict = {v: k for k, v in crop_lookup_dict.items()}
+    codes = set(lulc_raster.get_band(1).data.flatten())
 
     reclass_table = {}
-    for key in vars_dict['observed_yields_maps_dict'].keys():
-        reclass_table[inv_crop_lookup_dict[key]] = 0
+    for code in codes:
+        reclass_table[code] = lulc_raster.get_nodata(1)
     reclass_table[inv_crop_lookup_dict[crop]] = 1
 
     masked_lulc_raster = lulc_raster.reclass(reclass_table)
-
     return masked_lulc_raster
 
 
@@ -447,24 +446,20 @@ def calc_percentile_yield(vars_dict):
             LOGGER.info('Calculating percentile yield for %s in %s' % (
                 crop, percentile))
             # Wrangle Data...
-            climate_bin_raster = _get_climate_bin_over_lulc(
-                vars_dict, crop, aoi_vector, base_raster_float)
-
             reclass_dict = {}
             climate_bins = percentile_yield_dict[crop].keys()
             for climate_bin in climate_bins:
                 reclass_dict[climate_bin] = percentile_yield_dict[
                     crop][climate_bin][percentile]
 
-            # Find Yield and Production
-            crop_yield_raster = climate_bin_raster.reclass(reclass_dict)
+            crop_yield_raster = _get_climate_bin_yield_over_lulc(
+                vars_dict, crop, aoi_vector, base_raster_float, reclass_dict)
 
             masked_lulc_raster = _get_masked_lulc_raster(
                 vars_dict, crop, lulc_raster).set_datatype_and_nodata(
                 gdal.GDT_Float64, NODATA_FLOAT)
 
-            yield_raster = crop_yield_raster.reclass_masked_values(
-                masked_lulc_raster, 0)
+            yield_raster = crop_yield_raster * masked_lulc_raster
 
             Production_raster = _calculate_production_for_crop(
                 vars_dict, crop, yield_raster, percentile=percentile)
@@ -484,7 +479,6 @@ def calc_percentile_yield(vars_dict):
                 returns_raster = returns_raster + returns_raster_crop
 
             # Clean Up Rasters...
-            del climate_bin_raster
             del crop_yield_raster
             del masked_lulc_raster
             del yield_raster
@@ -512,6 +506,43 @@ def calc_percentile_yield(vars_dict):
     return vars_dict
 
 
+def _get_climate_bin_yield_over_lulc(vars_dict, crop, aoi_vector, base_raster_float, reclass_dict):
+    '''
+    Clips the climate bin values in the global dataset, reprojects and
+        resamples those values to a new raster aligned to the given LULC raster
+        that is then returned to the user.
+    '''
+
+
+    climate_bin_raster = Raster.from_file(
+        vars_dict['climate_bin_maps_dict'][crop])
+
+    reproj_aoi_vector = aoi_vector.reproject(
+        climate_bin_raster.get_projection())
+
+    clipped_climate_bin_raster = climate_bin_raster.clip(
+        reproj_aoi_vector.uri).set_nodata(NODATA_FLOAT)
+
+    if clipped_climate_bin_raster.get_shape() == (1, 1):
+        climate_bin_val = float(clipped_climate_bin_raster.get_band(
+            1)[0, 0])
+
+        aligned_crop_yield_raster = base_raster_float.ones() * reclass_dict[climate_bin_val]
+    else:
+        crop_yield_raster = clipped_climate_bin_raster.reclass(reclass_dict)
+
+        # note: this reprojection could result in very long computation times
+        reproj_crop_yield_raster = clipped_climate_bin_raster.reproject(
+            base_raster_float.get_projection(),
+            'nearest',
+            base_raster_float.get_affine().a)
+
+        aligned_crop_yield_raster = reproj_crop_yield_raster.align_to(
+            base_raster_float, 'nearest')
+
+    return aligned_crop_yield_raster
+
+
 def _get_climate_bin_over_lulc(vars_dict, crop, aoi_vector, base_raster_float):
     '''
     Clips the climate bin values in the global dataset, reprojects and
@@ -525,7 +556,7 @@ def _get_climate_bin_over_lulc(vars_dict, crop, aoi_vector, base_raster_float):
         climate_bin_raster.get_projection())
 
     clipped_climate_bin_raster = climate_bin_raster.clip(
-        reproj_aoi_vector.uri).set_nodata(NODATA_INT)
+        reproj_aoi_vector.uri).set_nodata(NODATA_FLOAT)
 
     if clipped_climate_bin_raster.get_shape() == (1, 1):
         climate_bin_val = float(clipped_climate_bin_raster.get_band(
