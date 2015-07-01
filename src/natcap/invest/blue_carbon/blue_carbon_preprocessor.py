@@ -56,32 +56,29 @@ def get_transition_set_count_from_uri(dataset_uri_list, ignore_nodata=True):
         multi_uri = pygeoprocessing.geoprocessing.temporary_filename()
 
         #reclass orig values
-        pygeoprocessing.geoprocessing.reclassify_dataset_uri(
-            dataset_uri_list[i],
-            reclass_orig_dict,
-            orig_uri,
-            data_type,
-            nodata,
-            exception_flag="values_required")
+        pygeoprocessing.geoprocessing.reclassify_dataset_uri(dataset_uri_list[i],
+                                            reclass_orig_dict,
+                                            orig_uri,
+                                            data_type,
+                                            nodata,
+                                            exception_flag="values_required")
 
         #reclass dest values
-        pygeoprocessing.geoprocessing.reclassify_dataset_uri(
-            dataset_uri_list[i+1],
-            reclass_dest_dict,
-            dest_uri,
-            data_type,
-            nodata,
-            exception_flag="values_required")
+        pygeoprocessing.geoprocessing.reclassify_dataset_uri(dataset_uri_list[i+1],
+                                            reclass_dest_dict,
+                                            dest_uri,
+                                            data_type,
+                                            nodata,
+                                            exception_flag="values_required")
 
         #multiplex orig with dest
-        pygeoprocessing.geoprocessing.vectorize_datasets(
-            [orig_uri, dest_uri],
-            add_op,
-            multi_uri,
-            data_type,
-            nodata,
-            cell_size,
-            "union")
+        pygeoprocessing.geoprocessing.vectorize_datasets([orig_uri, dest_uri],
+                                        add_op,
+                                        multi_uri,
+                                        data_type,
+                                        nodata,
+                                        cell_size,
+                                        "union")
 
         #get unique counts
         counts[i]=pygeoprocessing.geoprocessing.unique_raster_values_count(multi_uri, False)
