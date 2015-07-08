@@ -1,0 +1,12 @@
+gdal
+h5py
+matplotlib
+natcap.versioner>=0.1.2
+numpy
+poster
+pyamg
+pygeoprocessing==0.3.0a3
+pyyaml
+scipy
+setuptools
+shapely
