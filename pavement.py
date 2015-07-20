@@ -15,6 +15,7 @@ import imp
 import subprocess
 import inspect
 import tarfile
+import socket
 from types import DictType
 
 import pkg_resources
@@ -599,13 +600,18 @@ def push(args):
     """Push a file or files to a remote server.
 
     Usage:
-        paver push [--password] [user@]hostname[:target_dir] file1, file2, ...
+        paver push [--private-key=KEYFILE] [--password] [--makedirs] [user@]hostname[:target_dir] file1, file2, ...
 
     Uses pythonic paramiko-based SCP to copy files to the remote server.
+
+    if --private-key=KEYFILE is provided, KEYFILE must be the path to the private
+    key file to use.  If this file cannot be found, BuildFailure will be raised.
 
     If --password is provided at the command line, the user will be prompted
     for a password.  This is sometimes required when the remote's private key
     requires a password to decrypt.
+
+    If --makedirs is provided, intermediate directories will be created as needed.
 
     If a target username is not provided ([user@]...), the current user's username
     used for the transfer.
@@ -619,6 +625,9 @@ def push(args):
     ssh = SSHClient()
     ssh.load_system_host_keys()
 
+    # Automatically add host key if needed
+    #ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
     # Clean out all of the user-configurable options flags.
     config_opts = []
     for argument in args:
@@ -628,6 +637,17 @@ def push(args):
 
     use_password = '--password' in config_opts
 
+    # check if the user specified a private key to use
+    private_key = None
+    for argument in config_opts:
+        if argument.startswith('--private-key'):
+            private_key_file = argument.split('=')[1]
+            if not os.path.exists(private_key_file):
+                raise BuildFailure(
+                    'Cannot fild private key file %s' % private_key_file)
+            print 'Using private key %s' % private_key_file
+            private_key = paramiko.RSAKey.from_private_key_file(private_key_file)
+            break
     try:
         destination_config = args[0]
     except IndexError:
@@ -647,7 +667,7 @@ def push(args):
         username = destination_config.split('@')[0]
         destination_config = destination_config.replace(username + '@', '')
     else:
-        username = getpass.getuser()
+        username = getpass.getuser().strip()
 
     if ':' in destination_config:
         target_dir = destination_config.split(':')[-1]
@@ -657,7 +677,7 @@ def push(args):
         target_dir = None
 
     # hostname is whatever remains of the dest config.
-    hostname = destination_config
+    hostname = destination_config.strip()
 
     # start up the SSH connection
     if use_password:
@@ -666,13 +686,20 @@ def push(args):
         password = None
 
     try:
-        ssh.connect(hostname, username=username, password=password)
+        ssh.connect(hostname, 22, username=username, password=password, pkey=private_key)
     except paramiko.BadAuthenticationType:
-        print 'ERROR: incorrect password or bad SSH key.'
-        return
+        raise BuildFailure('ERROR: incorrect password or bad SSH key')
     except paramiko.PasswordRequiredException:
-        print 'ERROR: password required to decrypt private key on remote.  Use --password flag'
-        return
+        raise BuildFailure('ERROR: password required to decrypt private key on remote.  Use --password flag')
+    except socket.error as other_error:
+        raise BuildFailure(other_error)
+
+    # Make folders on remote if needed.
+    if target_dir is not None and '--makedirs' in config_opts:
+        ssh.exec_command('if [ ! -d "{dir}" ]\nthen\nmkdir -p -v {dir}\nfi'.format(
+            dir=target_dir))
+    else:
+        print 'Skipping creation of folders on remote'
 
     scp = SCPClient(ssh.get_transport())
     for transfer_file in files_to_push:
@@ -682,9 +709,14 @@ def push(args):
         else:
             target_filename = file_basename
 
+        # destination OS is linux, so adjust windows filepaths to match
+        if platform.system() == 'Windows':
+            target_filename = target_filename.replace(os.sep, '/')
+
         print 'Transferring %s -> %s:%s ' % (transfer_file, hostname, target_filename)
         scp.put(transfer_file, target_filename)
 
+    ssh.close()
 
 @task
 def clean(options):
@@ -1624,7 +1656,7 @@ def jenkins_installer(options):
         call_task('jenkins_push_artifacts', options={
             'python': build_options['python'],
             'username': 'dataportal',
-            'host': 'data.naturalcapitalproject.org',
+            'host': '10.240.218.61',  # google VM internal IP
             'dataportal': 'public_html',
         })
 
@@ -1684,6 +1716,7 @@ def forked_by(options):
     ('dataportal=', '', 'Path to the dataportal'),
     ('upstream=', '', 'The URL to the upstream REPO.  Use this when this repo is moved'),
     ('password', '', 'Prompt for a password'),
+    ('private-key=', '', 'Use this private key to push'),
 ])
 def jenkins_push_artifacts(options):
     """
@@ -1722,7 +1755,6 @@ def jenkins_push_artifacts(options):
         # We're not on a fork!  Binaries are pushed to invest-releases
         # dirnames are relative to the dataportal root
         release_dir = os.path.join('invest-releases', version_string)
-
     else:
         # We're on a fork!
         # Push the binaries, documentation to nightly-build
@@ -1740,6 +1772,21 @@ def jenkins_push_artifacts(options):
         push_config = []
         if getattr(options.jenkins_push_artifacts, 'password', False):
             push_config.append('--password')
+
+        pkey = None
+        if getattr(options.jenkins_push_artifacts, 'private_key', False):
+            pkey = options.jenkins_push_artifacts.private_key
+        elif platform.system() == 'Windows':
+            # Assume a default private key location for jenkins builds on
+            # Windows
+            pkey = os.path.join(os.path.expanduser('~'),
+                                '.ssh', 'dataportal-id_rsa')
+        else:
+            print ('No private key provided, and not on Windows, so not '
+                   'assuming a default private key file')
+
+        push_config.append('--private-key=%s' % pkey)
+        push_config.append('--makedirs')
 
         push_config.append('{user}@{host}:{dir}'.format(**push_args))
         return push_config
