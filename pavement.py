@@ -48,7 +48,7 @@ class Repository(object):
         if not self.ischeckedout():
             self.clone()
         else:
-            LOGGER.debug('Repository %s exists', self.local_path)
+            print 'Repository %s exists' % self.local_path
 
 
         # If we're already updated to the correct rev, return.
@@ -128,7 +128,7 @@ class HgRepository(Repository):
 
     def tracked_version(self, convert=True):
         json_version = Repository.tracked_version(self)
-        if convert is False:
+        if convert is False or not os.path.exists(self.local_path):
             return json_version
         return self._format_log(template='{node}', rev=json_version)
 
@@ -200,7 +200,6 @@ class GitRepository(Repository):
 
 REPOS_DICT = {
     'users-guide': HgRepository('doc/users-guide', 'https://bitbucket.org/natcap/invest.users-guide'),
-    'pygeoprocessing': HgRepository('src/pygeoprocessing', 'https://bitbucket.org/richpsharp/pygeoprocessing'),
     'invest-data': SVNRepository('data/invest-data', 'svn://scm.naturalcapitalproject.org/svn/invest-sample-data'),
     'invest-2': HgRepository('src/invest-natcap.default', 'http://bitbucket.org/natcap/invest.arcgis'),
     'pyinstaller': GitRepository('src/pyinstaller', 'https://github.com/pyinstaller/pyinstaller.git'),
@@ -546,7 +545,7 @@ def fetch(args):
     # determine which groupings the user wants to operate on.
     # example: `src` would represent all repos under src/
     # example: `data` would represent all repos under data/
-    # example: `src/pygeoprocessing` would represent the pygeoprocessing repo
+    # example: `src/pyinstaller` would represent the pyinstaller repo
     repos = set([])
     for argument in args:
         if not argument.startswith('-'):
@@ -559,7 +558,7 @@ def fetch(args):
 
         Arguments:
             local_repo_path (string): the path to the local repository
-                relative to the CWD. (example: src/pygeoprocessing)
+                relative to the CWD. (example: src/pyinstaller)
 
         Returns:
             Boolean: Whether the user did request this repo.
@@ -571,7 +570,7 @@ def fetch(args):
         return False
 
     for repo in REPOS:
-        LOGGER.debug('Checking %s', repo.local_path)
+        print 'Checking %s' % repo.local_path
 
         # If the user did not request this repo AND the user didn't want to
         # update everything (by specifying no positional args), skip this repo.
@@ -700,6 +699,8 @@ def clean(options):
                      'exe/dist',
                      'exe/build',
                      'api_env',
+                     'natcap.invest.egg-info',
+                     'release_env',
                      'invest-bin',
                      ]
     files_to_rm = [
@@ -955,6 +956,17 @@ def build_bin(options):
     """
     Build frozen binaries of InVEST.
     """
+
+    # if pyinstaller repo is at version 2.1, remove six.py because it conflicts
+    # with the version that matplotlib requires.  Pyinstaller provides
+    # six==1.0.0, matplotlib requires six>=1.3.0.
+    pyi_repo = REPOS_DICT['pyinstaller']
+    print 'Checking and removing deprecated six.py in pyinstaller if needed'
+    if pyi_repo.current_rev() == pyi_repo.format_rev('v2.1'):
+        six_glob = os.path.join(pyi_repo.local_path, 'PyInstaller', 'lib', 'six.*')
+        for six_file in glob.glob(six_glob):
+            dry('rm %s' % six_file, os.remove, six_file)
+
     # if the InVEST built binary directory exists, it should always
     # be deleted.  This is because we've had some weird issues with builds
     # not working properly when we don't just do a clean rebuild.
@@ -1436,7 +1448,7 @@ def build(options):
             print 'Skipping task %s' % task_base
 
 
-    if getattr(options, 'noinstaller', False) is False:
+    if getattr(options.build, 'noinstaller', False) is False:
         # The installer task has its own parameter defaults.  Let the
         # build_installer task handle most of them.  We can pass in some of the
         # parameters, though.
@@ -1478,7 +1490,7 @@ def collect_release_files(options):
         dry('mkdir %s' % data_dir, os.makedirs, data_dir)
 
     for data_zip in glob.glob(os.path.join('dist', '*.zip')):
-        if data_zip.startswith('invest'):
+        if os.path.basename(data_zip).startswith('invest'):
             # Skip the api and userguide zipfiles
             continue
 
@@ -1547,6 +1559,7 @@ def collect_release_files(options):
     ('nobin=', '', "Don't build the binaries"),
     ('nodocs=', '', "Don't build the documentation"),
     ('noinstaller=', '', "Don't build the installer"),
+    ('nopush=', '', "Don't Push the build artifacts to dataportal"),
 ])
 def jenkins_installer(options):
     """
@@ -1598,6 +1611,24 @@ def jenkins_installer(options):
 
     call_task('build', options=build_options)
 
+    try:
+        nopush_str = getattr(options.jenkins_installer, 'nopush')
+        if nopush_str in ['false', 'False', '0', '', '""',]:
+            push = True
+        else:
+            push = False
+    except AttributeError:
+        push = True
+
+    if push:
+        call_task('jenkins_push_artifacts', options={
+            'python': build_options['python'],
+            'username': 'dataportal',
+            'host': 'data.naturalcapitalproject.org',
+            'dataportal': 'public_html',
+        })
+
+
 
 @task
 @consume_args
@@ -1644,6 +1675,77 @@ def forked_by(options):
             username_file.write(username)
     except AttributeError:
         pass
+
+@task
+@cmdopts([
+    ('python=', '', 'Python exe'),
+    ('username=', '', 'Remote username'),
+    ('host=', '', 'URL of the remote server'),
+    ('dataportal=', '', 'Path to the dataportal'),
+    ('upstream=', '', 'The URL to the upstream REPO.  Use this when this repo is moved'),
+    ('password', '', 'Prompt for a password'),
+])
+def jenkins_push_artifacts(options):
+    """
+    Push artifacts to a remote server.
+    """
+
+    # get fork name
+    try:
+        hg_path = getattr(options.jenkins_push_artifacts, 'upstream')
+    except AttributeError:
+        hg_path = sh('hg paths', capture=True).rstrip()
+
+    username, reponame = hg_path.split('/')[-2:]
+
+    version_string = _invest_version(getattr(options.jenkins_push_artifacts, 'python', sys.executable))
+    if 'post' in version_string:
+        develop = True
+    else:
+        develop = False
+
+    def _get_release_files():
+        release_files = []
+        for filename in glob.glob('dist/release_*/*'):
+            if not os.path.isdir(filename):
+                release_files.append(filename)
+        return release_files
+
+    release_files = _get_release_files()
+    if develop is True:
+        data_dirname = 'develop'
+    else:
+        data_dirname = version_string
+    data_dir = os.path.join('invest-data', data_dirname)
+    data_files = glob.glob('dist/release_*/data/*')
+    if username == 'natcap' and reponame == 'invest':
+        # We're not on a fork!  Binaries are pushed to invest-releases
+        # dirnames are relative to the dataportal root
+        release_dir = os.path.join('invest-releases', version_string)
+
+    else:
+        # We're on a fork!
+        # Push the binaries, documentation to nightly-build
+        release_dir = os.path.join('nightly-build', 'invest-forks', username)
+
+    def _push(target_dir):
+        push_args = {
+            'user': getattr(options.jenkins_push_artifacts, 'username'),
+            'host': getattr(options.jenkins_push_artifacts, 'host'),
+            'dir': os.path.join(
+                getattr(options.jenkins_push_artifacts, 'dataportal'),
+                target_dir),
+        }
+
+        push_config = []
+        if getattr(options.jenkins_push_artifacts, 'password', False):
+            push_config.append('--password')
+
+        push_config.append('{user}@{host}:{dir}'.format(**push_args))
+        return push_config
+
+    call_task('push', args=_push(release_dir) + release_files)
+    call_task('push', args=_push(data_dir) + data_files)
 
 
 
