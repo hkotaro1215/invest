@@ -619,6 +619,7 @@ def push(args):
     If a target directory is not provided (hostname[:target_dir]), the current
     directory of the target user is used.
     """
+    print args
     import paramiko
     from paramiko import SSHClient
     from scp import SCPClient
@@ -626,11 +627,11 @@ def push(args):
     ssh.load_system_host_keys()
 
     # Automatically add host key if needed
-    #ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
     # Clean out all of the user-configurable options flags.
     config_opts = []
-    for argument in args:
+    for argument in args[:]:  # operate on a copy of args
         if argument.startswith('--'):
             config_opts.append(argument)
             args.remove(argument)
@@ -651,13 +652,18 @@ def push(args):
     try:
         destination_config = args[0]
     except IndexError:
-        print "ERROR: destination config must be provided"
-        return
+        raise BuildFailure("ERROR: destination config must be provided")
 
     files_to_push = args[1:]
     if len(files_to_push) == 0:
-        print "ERROR: At least one file must be given"
-        return
+        raise BuildFailure("ERROR: At least one file must be given")
+
+    def _fix_path(path):
+        """Fix up a windows path to work on linux"""
+        # destination OS is linux, so adjust windows filepaths to match
+        if platform.system() == 'Windows':
+            return path.replace(os.sep, '/')
+        return path
 
     # ASSUME WE'RE ONLY DOING ONE HOST PER PUSH
     # split apart the configuration string.
@@ -670,14 +676,17 @@ def push(args):
         username = getpass.getuser().strip()
 
     if ':' in destination_config:
-        target_dir = destination_config.split(':')[-1]
+        target_dir = _fix_path(destination_config.split(':')[-1])
         destination_config = destination_config.replace(':' + target_dir, '')
     else:
         # just use the SCP default
         target_dir = None
+    print 'Target dir: %s' % target_dir
+    print 'Dest config: %s' % destination_config
 
     # hostname is whatever remains of the dest config.
     hostname = destination_config.strip()
+    print 'Hostname: %s' % hostname
 
     # start up the SSH connection
     if use_password:
@@ -709,11 +718,7 @@ def push(args):
         else:
             target_filename = file_basename
 
-        # destination OS is linux, so adjust windows filepaths to match
-        if platform.system() == 'Windows':
-            target_filename = target_filename.replace(os.sep, '/')
-
-        print 'Transferring %s -> %s:%s ' % (transfer_file, hostname, target_filename)
+        print 'Transferring %s -> %s:%s ' % (transfer_file, hostname, _fix_path(target_filename))
         scp.put(transfer_file, target_filename)
 
     ssh.close()
@@ -1656,7 +1661,7 @@ def jenkins_installer(options):
         call_task('jenkins_push_artifacts', options={
             'python': build_options['python'],
             'username': 'dataportal',
-            'host': '10.240.218.61',  # google VM internal IP
+            'host': 'data.naturalcapitalproject.org',
             'dataportal': 'public_html',
         })
 
