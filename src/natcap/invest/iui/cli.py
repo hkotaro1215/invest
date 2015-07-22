@@ -6,9 +6,21 @@ import argparse
 import glob
 import os
 import sys
+import json
 
+import natcap.versioner
 import natcap.invest
 import natcap.invest.iui.modelui
+
+TOOLS_IN_DEVELOPMENT = set([
+    'seasonal_water_yield',
+    'ndr',
+    'globio',
+    'seasonal_water_yield',
+    'scenic_quality',
+    'crop_production',
+    'scenic_quality',
+])
 
 def iui_dir():
     """
@@ -16,12 +28,36 @@ def iui_dir():
     """
     if getattr(sys, 'frozen', False):
         # we are running in a |PyInstaller| bundle
-        basedir = os.path.dirame(sys.executable)
+        basedir = os.path.join(
+            os.path.dirname(sys.executable), 'natcap', 'invest', 'iui')
     else:
         # we are running in a normal Python environment
         basedir = os.path.dirname(__file__)
+    #print 'BASEDIR: %s' % basedir
     return basedir
 
+
+def load_config():
+    """
+    Load configuration options from a config file and assume defaults if they aren't there.
+    """
+
+    try:
+        config_file = os.path.join(iui_dir(), 'cli_config.json')
+        user_config = json.load(open(config_file))
+    except IOError:
+        # Raised when the cli config file hasn't been defined or can't be
+        # opened.  Assume that the user has not defined configuration in this
+        # case.  Don't fail loudly because there are cases where we want to
+        # assume this default behavior
+        user_config = {}
+
+    base_config = {
+        'prompt_on_empty_input': False
+    }
+
+    base_config.update(user_config)
+    return base_config
 
 def list_models():
     """
@@ -34,7 +70,19 @@ def list_models():
         json_name = os.path.basename(json_name)
 
         model_names.append(json_name)
-    return model_names
+    return sorted(model_names)
+
+def print_models():
+    """
+    Pretty-print available models.
+    """
+    print 'Available models:'
+    for model_name in list_models():
+        if model_name in TOOLS_IN_DEVELOPMENT:
+            unstable = '    UNSTABLE'
+        else:
+            unstable = ''
+        print '    %-30s %s' % (model_name, unstable)
 
 def write_console_files(out_dir, extension):
     """
@@ -87,16 +135,25 @@ def main():
     parser.add_argument('model', nargs='?', help='The model/tool to run.  Use --list to show available models/tools.')
 
     args = parser.parse_args()
+    user_config = load_config()
 
     if args.list is True:
-        print 'Available models:'
-        for model_name in list_models():
-            print '    ' + model_name
-        return
+        print_models()
+        return 0
 
     if args.model not in list_models():
-        print 'Error: "%s" not a known model' % args.model
-        return 1
+        parser.print_help()
+        print ''
+        print_models()
+
+        if user_config['prompt_on_empty_input'] is False:
+            return 1
+
+        args.model = raw_input("Choose a model: ")
+        if args.model not in list_models():
+            error_msg = "Error: '%s' not a known model" % args.model
+            print error_msg
+            return 1
 
     natcap.invest.iui.modelui.main(args.model + '.json')
 
