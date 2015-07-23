@@ -929,7 +929,7 @@ def check():
 
     # verify required programs exist
     errors_found = False
-    for program in ['hg', 'git', 'make']:
+    for program in ['hg', 'git', 'make', 'pdflatex']:
         # Inspired by this SO post: http://stackoverflow.com/a/855764/299084
 
         fpath, fname = os.path.split(program)
@@ -945,6 +945,7 @@ def check():
                     if is_exe(exe_file):
                         raise FoundEXE
             except FoundEXE:
+                print "Found %-11s: %s" % (program, exe_file)
                 continue
             else:
                 print "ERROR: executable %s not found on the PATH" % fname
@@ -956,7 +957,13 @@ def check():
     ]
     for requirement in requirements:
         try:
-            pkg_resources.require(requirements)
+            pkg_resources.require(requirement)
+            pkg_req = pkg_resources.Requirement.parse(requirement)
+            pkg = __import__(pkg_req.project_name)
+            print "Python package OK: {pkg} {ver} (meets {req})".format(
+                pkg=pkg_req.project_name,
+                ver=pkg.__version__,
+                req=requirement)
         except pkg_resources.VersionConflict as conflict:
             print 'ERROR: %s' % conflict.report()
             errors_found = True
@@ -1875,6 +1882,32 @@ def jenkins_push_artifacts(options):
     if len(data_files) > 0:
         call_task('push', args=_push(data_dir) + data_files)
 
+    def _archive_present(substring):
+        """
+        Is there a file in release_files that ends in `substring`?
+        Returns a boolean.
+        """
+        archive_present = reduce(
+            lambda x, y: x or y,
+            map(lambda x: x.endswith(substring),
+                release_files))
+        return archive_present
+
+
+    zips_to_unzip = []
+    if not _archive_present('apidocs.zip'):
+        print 'API documentation was not built.'
+    else:
+        zips_to_unzip.append('*apidocs.zip')
+
+    if not _archive_present('userguide.zip'):
+        print 'User guide was not built'
+    else:
+        zips_to_unzip.append('*userguide.zip')
+
+    if len(zips_to_unzip) == 0:
+        print 'Nothing to unzip on the remote.  Skipping.'
+        return
 
     # unzip the API docs and HTML documentation.  This will overwrite anything
     # else in the release dir.
@@ -1893,7 +1926,7 @@ def jenkins_push_artifacts(options):
     if platform.system() == 'Windows':
         release_dir = release_dir.replace(os.sep, '/')
 
-    for filename in ["*apidocs.zip", "*userguide.zip"]:
+    for filename in zips_to_unzip:
         stdin, stdout, stderr = ssh.exec_command(
             'cd public_html/{releasedir}; unzip `find -cmin -2 -name "{zipfile}" | tail -n 1`'.format(
                 releasedir=release_dir,
