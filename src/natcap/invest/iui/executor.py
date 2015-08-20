@@ -476,16 +476,11 @@ class Executor(threading.Thread):
                # Model name is name of module file, minus the extension
                 model_name = os.path.splitext(os.path.basename(module))[0]
                 LOGGER.debug('Loading %s from %s', model_name, model)
-            elif getattr(sys, 'frozen', False) and getattr(sys, '_MEIPASS', False):
+                model = importlib.import_module(module)
+            else:
                 model = import_module(module)
                 model_name = os.path.splitext(os.path.basename(module))[0]
                 LOGGER.debug('Loading %s in frozen environment', model)
-            else:
-                LOGGER.debug('PATH: %s', sys.path)
-                module_list = module.split('.')
-                model = locate_module(module_list)
-                model_name = module_list[-1]  # model name is last entry in list
-                LOGGER.debug('Loading %s from PATH', model_name)
         except ImportError as e:
             LOGGER.error('ImportError found when locating %s', module)
             self.printTraceback()
@@ -509,17 +504,11 @@ class Executor(threading.Thread):
         LOGGER.info('Executing the loaded model')
 
         try:
-            model_version = model.__version__
-            LOGGER.info('Running model version %s', model_version)
-        except AttributeError:
-            model_version = None
-
-        try:
             LOGGER.info('Running InVEST version "%s"', natcap.invest.__version__)
             LOGGER.info('Python architecture: %s', platform.architecture())
             LOGGER.info('Disk space remaining for workspace: %s',
                         fileio.get_free_space(workspace))
-            natcap.invest.log_model(model_name, model_version)  # log model usage to ncp-dev
+            natcap.invest.log_model(model_name, args)
 
             LOGGER.info('Pointing temporary directory at the workspace at %s' % args['workspace_dir'])
             temporary_path = os.path.join(args['workspace_dir'], 'tmp')
