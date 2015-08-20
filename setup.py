@@ -40,7 +40,7 @@ try:
 except ImportError:
     USE_CYTHON = False
 
-readme = open('README.rst').read()
+readme = open('README_PYTHON.rst').read()
 history = open('HISTORY.rst').read().replace('.. :changelog:', '')
 LICENSE = open('LICENSE.txt').read()
 
@@ -121,6 +121,7 @@ setup(
         'natcap.invest.crop_production',
         'natcap.invest.blue_carbon',
         'natcap.invest.carbon',
+        'natcap.invest.carbon_edge_effect',
         'natcap.invest.coastal_vulnerability',
         'natcap.invest.dbfpy',
         'natcap.invest.finfish_aquaculture',
