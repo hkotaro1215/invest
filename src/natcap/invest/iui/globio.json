@@ -4,8 +4,8 @@
   "targetScript": "natcap.invest.globio.globio",
   "modelName": "globio",
   "localDocURI": "../documentation/globio.html",
-  "height": 600,
-  "width": 900,
+  "height": 650,
+  "width": 800,
   "elements": [
     {
       "id": "workspace_list",
@@ -34,40 +34,6 @@
           "helpText": "This text will be appended to the end of the output files to help separate multiple runs."
         },
         {
-          "id": "aoi_uri",
-          "args_id": "aoi_uri",
-          "type": "file",
-          "label": "AOI (Shapefile) (optional)",
-          "defaultValue": "",
-          "required": false,
-          "validateAs": {
-            "type": "OGR",
-            "layers": [
-              {
-                "name": {
-                  "inheritFrom": "file"
-                },
-                "type": "polygons",
-                "projection": {
-                  "exists": true
-                }
-              }
-            ]
-          }
-        },
-        {
-          "id": "land_use",
-          "args_id": "lulc_uri",
-          "type": "file",
-          "label": "Land Use (Raster)",
-          "defaultValue": "../globio/input/lulc_2008.tif",
-          "required": true,
-          "validateAs": {
-            "type": "GDAL"
-          },
-          "helpText": "A raster with landcover IDs that are to be mapped to GLOBIO ids."
-        },
-        {
           "id": "lulc_to_globio_table_uri",
           "args_id": "lulc_to_globio_table_uri",
           "type": "file",
@@ -78,7 +44,40 @@
             "type": "CSV",
             "fieldsExist": ["lucode", "globio_lucode"]
           },
-          "helpText": "A CSV table containing model information corresponding to each of the land use classes in the LULC raster input. It must contain the fields 'lucode', 'usle_c', and 'usle_p'.  See the InVEST Sediment User's Guide for more information about these fields."
+          "helpText": "A CSV table containing model information corresponding to each of the land use classes in the LULC raster input. It must contain the fields 'lucode', 'usle_c', and 'usle_p'.  See the InVEST Sediment User's Guide for more information about these fields.",
+          "disabledBy": "predefined_globio"
+        },
+        {
+          "id": "aoi_uri",
+          "args_id": "aoi_uri",
+          "type": "file",
+          "label": "AOI (Vector) (optional)",
+          "defaultValue": "../globio/input/sub_aoi.shp",
+          "required": false,
+          "validateAs": {
+            "type": "OGR",
+            "layers": [
+              {
+                "name": {
+                  "inheritFrom": "file"
+                },
+                "type": "polygons"
+              }
+            ]
+          },
+          "helpText": "This is a set of polygons that can be used to aggregate MSA sum and mean to a polygon."
+        },
+        {
+          "id": "land_use",
+          "args_id": "lulc_uri",
+          "type": "file",
+          "label": "Land Use/Cover (Raster)",
+          "required": true,
+          "validateAs": {
+            "type": "GDAL"
+          },
+          "defaultValue": "../globio/input/lulc_2008.tif",
+          "disabledBy": "predefined_globio"
         },
         {
           "id": "infrastructure_dir",
@@ -86,19 +85,7 @@
           "type": "folder",
           "label": "Infrastructure Directory",
           "defaultValue": "../globio/input/infrastructure_dir",
-          "required": true,
-          "helpText": "A directory containing projected rasters or shapefiles that represent infrastructure in the area."
-        },
-        {
-          "id": "cropland",
-          "args_id": "cropland_uri",
-          "type": "file",
-          "label": "Cropland (Raster)",
-          "defaultValue": "../globio/input/cropland.tif",
-          "required": false,
-          "validateAs": {
-            "type": "GDAL"
-          }
+          "required": true
         },
         {
           "id": "pasture_uri",
@@ -109,7 +96,8 @@
           "required": true,
           "validateAs": {
             "type": "GDAL"
-          }
+          },
+          "disabledBy": "predefined_globio"
         },
         {
           "id": "potential_vegetation_uri",
@@ -120,18 +108,90 @@
           "required": true,
           "validateAs": {
             "type": "GDAL"
-          }
+          },
+          "disabledBy": "predefined_globio"
         },
         {
-          "id": "sum_yieldgap_uri",
-          "args_id": "sum_yieldgap_uri",
+          "id": "intensification_uri",
+          "args_id": "intensification_uri",
           "type": "file",
-          "label": "Sum Yieldgap (Raster)",
-          "defaultValue": "../globio/input/sum_yieldgap.tif",
+          "label": "Intensification (Raster)",
+          "defaultValue": "../globio/input/intensification_soy.tif",
           "required": true,
           "validateAs": {
             "type": "GDAL"
-          }
+          },
+          "disabledBy": "predefined_globio"
+        },
+        {
+          "id": "pasture_threshold",
+          "args_id": "pasture_threshold",
+          "type": "text",
+          "label": "Pasture Threshold",
+          "defaultValue": "0.5",
+          "required": true,
+          "validText": "^[0-9]+\\.?[0-9]*$",
+          "disabledBy": "predefined_globio"
+        },
+        {
+          "id": "intensification_threshold",
+          "args_id": "intensification_threshold",
+          "type": "text",
+          "label": "Intensification Threshold",
+          "defaultValue": "0.46",
+          "required": true,
+          "validText": "^[0-9]+\\.?[0-9]*$",
+          "disabledBy": "predefined_globio"
+        },
+        {
+          "id": "primary_threshold",
+          "args_id": "primary_threshold",
+          "type": "text",
+          "label": "Primary Threshold",
+          "defaultValue": "0.66",
+          "required": true,
+          "validText": "^[0-9]+\\.?[0-9]*$",
+          "disabledBy": "predefined_globio"
+        },
+        {
+          "id": "msa_parameters_uri",
+          "args_id": "msa_parameters_uri",
+          "type": "file",
+          "label": "MSA Parameter Table (CSV)",
+          "defaultValue": "../globio/input/msa_parameters.csv",
+          "required": true,
+          "validateAs": {
+            "type": "CSV",
+            "fieldsExist": ["MSA_type", "Value", "MSA_x"]
+          },
+          "helpText": "A CSV table containing MSA threshold values as defined in the user's guide.  Provided for advanced users that may wish to change those values."
+        }
+      ]
+    },
+    {
+      "id": "predefined_globio",
+      "args_id": "predefined_globio",
+      "label": "Predefined land use map for GLOBIO",
+      "type": "container",
+      "defaultValue": false,
+      "collapsible": true,
+      "elements": [
+        {
+          "id": "predefined_globio_land_use_list",
+          "type": "list",
+          "elements": [
+            {
+              "id": "globio_land_use",
+              "args_id": "globio_lulc_uri",
+              "type": "file",
+              "label": "GLOBIO Classified Land Use (Raster)",
+              "defaultValue": "",
+              "required": true,
+              "validateAs": {
+                "type": "GDAL"
+              }
+            }
+          ]
         }
       ]
     }

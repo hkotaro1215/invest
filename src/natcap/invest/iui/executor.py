@@ -15,6 +15,7 @@ import errno
 import tempfile
 from types import StringType
 import locale
+from importlib import import_module
 
 import natcap.invest
 import natcap.invest.iui
@@ -29,8 +30,8 @@ ENCODING = sys.getfilesystemencoding()
 # WindowsError is.  Using shutil to import an empty WindowsError
 current_os = platform.system()
 if current_os != 'Windows':
-    LOGGER.debug('Not on Windows (on %s), importing shutil\'s WindowsError',
-                 current_os)
+    #LOGGER.debug('Not on Windows (on %s), importing shutil\'s WindowsError',
+    #             current_os)
     from shutil import WindowsError
 
 # This class is to be used if certain WindowsErrors or IOErrors are encountered.
@@ -475,12 +476,11 @@ class Executor(threading.Thread):
                # Model name is name of module file, minus the extension
                 model_name = os.path.splitext(os.path.basename(module))[0]
                 LOGGER.debug('Loading %s from %s', model_name, model)
+                model = importlib.import_module(module)
             else:
-                LOGGER.debug('PATH: %s', sys.path)
-                module_list = module.split('.')
-                model = locate_module(module_list)
-                model_name = module_list[-1]  # model name is last entry in list
-                LOGGER.debug('Loading %s from PATH', model_name)
+                model = import_module(module)
+                model_name = os.path.splitext(os.path.basename(module))[0]
+                LOGGER.debug('Loading %s in frozen environment', model)
         except ImportError as e:
             LOGGER.error('ImportError found when locating %s', module)
             self.printTraceback()

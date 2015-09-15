@@ -4,18 +4,19 @@ InVEST - Integrated Valuation of Ecosystem Services and Tradeoffs
 
 Common functionality provided by setup.py:
     build_sphinx
+
+For other commands, try `python setup.py --help-commands`
 """
 
 import os
 import sys
 
-from setuptools.command.sdist import sdist as _sdist
-from setuptools.command.build_py import build_py as _build_py
 from setuptools.command.build_ext import build_ext
 from setuptools.extension import Extension
 from setuptools import setup
 
 import numpy
+import natcap.versioner
 
 # Monkeypatch os.link to prevent hard lnks from being formed.  Useful when
 # running tests across filesystems, like in our test docker containers.
@@ -39,12 +40,7 @@ try:
 except ImportError:
     USE_CYTHON = False
 
-# Defining the command classes for sdist and build_py here so we can access
-# the commandclasses in the setup function.
-CMDCLASS['sdist'] = _sdist
-CMDCLASS['build_py'] = _build_py
-
-readme = open('README.rst').read()
+readme = open('README_PYTHON.rst').read()
 history = open('HISTORY.rst').read().replace('.. :changelog:', '')
 LICENSE = open('LICENSE.txt').read()
 
@@ -111,28 +107,13 @@ EXTENSION_LIST = ([
 if not USE_CYTHON:
     EXTENSION_LIST = no_cythonize(EXTENSION_LIST)
 
-REQUIREMENTS = [
-    'numpy',
-    'scipy',
-    'gdal',
-    'matplotlib',
-    'shapely',
-    'poster',
-    'h5py',
-    'psycopg2',
-    'pyamg',
-    'pygeoprocessing',
-    'setuptools',
-    'setuptools_scm',
-    ]
-
 setup(
     name='natcap.invest',
     description="InVEST Ecosystem Service models",
     long_description=readme + '\n\n' + history,
     maintainer='James Douglass',
     maintainer_email='jdouglass@stanford.edu',
-    url='http://bitbucket.org/jdouglass/invest-py',
+    url='http://bitbucket.org/natcap/invest',
     namespace_packages=['natcap'],
     packages=[
         'natcap',
@@ -173,14 +154,12 @@ setup(
     package_dir={
         'natcap': 'src/natcap'
     },
+    version=natcap.versioner.parse_version(),
+    natcap_version='src/natcap/invest/version.py',
     include_package_data=True,
-    install_requires=REQUIREMENTS,
+    install_requires=open('requirements.txt').read().split('\n'),
     include_dirs=[numpy.get_include()],
     setup_requires=['nose>=1.0'],
-    use_scm_version={
-        'write_to': 'src/natcap/invest/version.py',
-    },
-    cmdclass=CMDCLASS,
     license=LICENSE,
     zip_safe=False,
     keywords='invest',
@@ -196,4 +175,34 @@ setup(
         'Topic :: Scientific/Engineering :: GIS'
     ],
     ext_modules=EXTENSION_LIST,
+    entry_points={
+        'console_scripts': [
+            'invest = natcap.invest.iui.cli:main'
+        ],
+    },
+    cmdclass=CMDCLASS,
+    package_data={
+        'natcap.invest.iui': [
+            '*.png',
+            '*.json',
+            'iui_resources/resources.json',
+            'iui_resources/images/*.png',
+        ],
+        'natcap.invest.reporting': [
+            'reporting_data/*.js',
+            'reporting_data/*.css',
+        ],
+        'natcap.invest.scenario_generator': [
+            '*.js',
+        ],
+        'natcap.invest.recreation': [
+            '*.php',
+            '*.r',
+            '*.json',
+        ],
+        'natcap.invest.wave_energy': [
+            'wave_energy_scripts/*.sh',
+            'wave_energy_scripts/*.txt'
+        ],
+    }
 )
