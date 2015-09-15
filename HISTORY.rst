@@ -2,6 +2,8 @@
 
 3.3.0
 =====
+* GLOBIO now uses an intensification parameter and not a map to average all agriculture across the GLOBIO 8 and 9 classes.
+* GLOBIO outputs modified so core outputs are in workspace and intermediate outputs are in a subdirectory called 'intermediate_outputs'.
 * Introduced a forest carbon edge effect model.
 * Refactored all the InVEST model user interfaces so that Workspace defaults to the user's home "Documents" directory.
 
