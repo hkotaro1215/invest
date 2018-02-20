@@ -1,0 +1,23 @@
+# requirements-dev.txt
+# --------------------
+# This file records the packages and requirements for packages that are needed
+# by infrastructure, but not by natcap.invest.
+#
+# Note that there may be some OS-specific requirements, so be sure to run
+# `paver check` to verify you have all the required packages.
+
+Cython
+pip>=6.0.0
+virtualenv>=12.0.1
+nose
+Paver>=1.3.0
+mock
+future
+wheel>=0.27.0
+pypiwin32; sys_platform == 'win32'
+setuptools>=8.0
+Sphinx>=1.3.1
+sphinx-rtd-theme
+PyInstaller==3.1.1
+setuptools_scm
+dmgbuild; sys_platform == 'darwin'
